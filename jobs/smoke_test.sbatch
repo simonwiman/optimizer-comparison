@@ -27,4 +27,4 @@ export WANDB_MODE=disabled
 export OMP_NUM_THREADS=1
 
 # Tiny model for a smoke test. Verify flag names against scripts/base_train.py.
-python -m scripts.base_train --depth=4 --device_batch_size=8 --run=dummy
+python -m scripts.base_train --depth=4 --device-batch-size=8 --run=dummy
