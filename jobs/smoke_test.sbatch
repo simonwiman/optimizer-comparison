@@ -22,7 +22,7 @@ source "$CONDA_BASE/etc/profile.d/conda.sh"
 conda activate "$CONDA_ENV"
 set -u
 
-export NANOCHAT_BASE_DIR="/path/to/scratch/nanochat"
+export NANOCHAT_BASE_DIR="$HOME/nanochat_data"
 export WANDB_MODE=disabled
 export OMP_NUM_THREADS=1
 
