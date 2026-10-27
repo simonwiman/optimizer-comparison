@@ -14,8 +14,6 @@
 
 set -euo pipefail
 
-CONDA_BASE="${CONDA_BASE:-$HOME/miniconda3}"
-CONDA_ENV="${CONDA_ENV:-nanochat}"
 OPTIMIZER="${OPTIMIZER:-both}"
 NUM_ITERS="${NUM_ITERS:-50}"
 MUON2_BETA2="${MUON2_BETA2:-0.95}"
@@ -27,10 +25,8 @@ mkdir -p "$LOG_DIR"
 exec > "$LOG_DIR/${SLURM_JOB_NAME:-job}-${OPTIMIZER}-${SLURM_JOB_ID:-$$}.out" 2>&1
 cd "$REPO_ROOT"
 
-set +u
-source "$CONDA_BASE/etc/profile.d/conda.sh"
-conda activate "$CONDA_ENV"
-set -u
+# Use the uv-built venv in the repo (has torch + wandb); conda is only needed to provide the `uv` command itself
+source "$REPO_ROOT/.venv/bin/activate"
 
 export NANOCHAT_BASE_DIR="$HOME/.cache/nanochat"
 export WANDB_MODE=disabled
