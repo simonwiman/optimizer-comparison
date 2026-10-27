@@ -91,6 +91,11 @@ entering orthogonalization is better conditioned (https://arxiv.org/abs/2603.282
 2) Muon+ renormalization: snap the Frobenius norm to sqrt(min(m, n)), the norm of an exactly
 semi-orthogonal matrix, correcting for under-convergence of the polar iteration (https://arxiv.org/abs/2602.21545)
 
+Optional Muon^2 (https://arxiv.org/abs/2604.09967): Adam-style second-moment preconditioning of the
+momentum *before* orthogonalization (M / (sqrt(V) + eps), V = EMA of the raw gradient squared). It improves
+the conditioning of the matrix entering the polar iteration. Enabled per param group via group["muon2"] = True
+(see --muon2 in scripts/base_train.py); when disabled the code path is identical to before and allocates no extra state.
+
 Some of the changes in nanochat implementation:
 - Uses a simpler, more general approach to parameter grouping and stacking
 - Uses a single fused kernel for the momentum -> polar_express -> variance_reduction -> update step
@@ -120,17 +125,30 @@ def muon_step_fused(
     beta2_t: Tensor,                # () - 0-D CPU tensor, beta2 for second moment
     ns_steps: int,                  # 5 - number of Newton-Schulz/Polar Express iterations
     red_dim: int,                   # -1 or -2 - reduction dimension for variance
+    precond_v: Tensor | None = None,        # (12, 768, 3072) fp32 - Muon^2 elementwise second moment (None = plain Muon)
+    precond_beta2_t: Tensor | None = None,  # () - 0-D CPU tensor, Muon^2 second-moment EMA coefficient
+    precond_eps_t: Tensor | None = None,    # () - 0-D CPU tensor, Muon^2 epsilon
 ) -> None:
     """
-    Fused Muon step: momentum -> polar_express -> variance_reduction -> cautious_update
+    Fused Muon step: momentum -> [muon2 precondition] -> polar_express -> variance_reduction -> cautious_update
     All in one compiled graph to eliminate Python overhead between ops.
     Some of the constants are 0-D CPU tensors to avoid recompilation when values change.
     """
+
+    # Muon^2: update the elementwise second moment with the raw gradient. This must happen before the
+    # Nesterov lerp_ below, which overwrites stacked_grads in place. Kept in fp32 (squared grads lose too much in bf16).
+    if precond_v is not None:
+        precond_v.lerp_(stacked_grads.float().square(), 1 - precond_beta2_t)
 
     # Nesterov momentum
     momentum = momentum_t.to(stacked_grads.dtype)
     momentum_buffer.lerp_(stacked_grads, 1 - momentum)
     g = stacked_grads.lerp_(momentum_buffer, momentum)
+
+    # Muon^2 preconditioning: M / (sqrt(V) + eps). No bias correction on purpose: it is a single scalar per step
+    # (shared by all elements) and the Frobenius normalization before the polar iteration divides it out anyway.
+    if precond_v is not None:
+        g = g.float() / (precond_v.sqrt() + precond_eps_t)
 
     # Cast to bf16 for speed when available; skip cast otherwise (fp16 is unstable here due to limited exponent range)
     X = g.bfloat16() if COMPUTE_DTYPE == torch.bfloat16 else g
@@ -256,6 +274,7 @@ class MuonAdamW(torch.optim.Optimizer):
             - 'kind': 'adamw' or 'muon'
             - For AdamW groups: 'lr', 'betas', 'eps', 'weight_decay'
             - For Muon groups: 'lr', 'momentum', 'ns_steps', 'beta2', 'weight_decay'
+              Optional (Muon^2): 'muon2' (bool, default False), 'muon2_beta2' (default 0.95), 'muon2_eps' (default 1e-8)
     """
     def __init__(self, param_groups: list[dict]):
         super().__init__(param_groups, defaults={})
@@ -270,6 +289,8 @@ class MuonAdamW(torch.optim.Optimizer):
         self._muon_lr_t = torch.tensor(0.0, dtype=torch.float32, device="cpu")
         self._muon_wd_t = torch.tensor(0.0, dtype=torch.float32, device="cpu")
         self._muon_beta2_t = torch.tensor(0.0, dtype=torch.float32, device="cpu")
+        self._muon2_beta2_t = torch.tensor(0.0, dtype=torch.float32, device="cpu")
+        self._muon2_eps_t = torch.tensor(0.0, dtype=torch.float32, device="cpu")
 
     def _reduce_adamw(self, group: dict, world_size: int) -> dict:
         """Launch async reduce ops for AdamW group. Returns info dict with per-param infos."""
@@ -381,6 +402,10 @@ class MuonAdamW(torch.optim.Optimizer):
             state_shape = (chunk_size, shape[-2], 1) if shape[-2] >= shape[-1] else (chunk_size, 1, shape[-1])
             state["second_momentum_buffer"] = torch.zeros(state_shape, dtype=dtype, device=device)
         red_dim = -1 if shape[-2] >= shape[-1] else -2
+        use_muon2 = group.get("muon2", False)
+        if use_muon2 and "precond_second_moment" not in state:
+            # Full-size elementwise second moment, fp32, sharded by chunk like momentum_buffer
+            state["precond_second_moment"] = torch.zeros(chunk_size, *shape, dtype=torch.float32, device=device)
 
         stacked_owned = None
         if num_owned > 0:
@@ -392,11 +417,21 @@ class MuonAdamW(torch.optim.Optimizer):
             self._muon_beta2_t.fill_(group["beta2"])
             self._muon_lr_t.fill_(group["lr"] * max(1.0, shape[-2] / shape[-1])**0.5)
             self._muon_wd_t.fill_(group["weight_decay"])
+            muon2_kwargs = {}
+            if use_muon2:
+                self._muon2_beta2_t.fill_(group.get("muon2_beta2", 0.95))
+                self._muon2_eps_t.fill_(group.get("muon2_eps", 1e-8))
+                muon2_kwargs = dict(
+                    precond_v=state["precond_second_moment"][:num_owned],
+                    precond_beta2_t=self._muon2_beta2_t,
+                    precond_eps_t=self._muon2_eps_t,
+                )
             muon_step_fused(
                 grad_chunk[:num_owned], stacked_owned,
                 state["momentum_buffer"][:num_owned], state["second_momentum_buffer"][:num_owned],
                 self._muon_momentum_t, self._muon_lr_t, self._muon_wd_t, self._muon_beta2_t,
                 group["ns_steps"], red_dim,
+                **muon2_kwargs,
             )
 
         if info['stacked_grads'] is None:

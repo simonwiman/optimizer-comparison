@@ -64,6 +64,9 @@ parser.add_argument("--unembedding-lr", type=float, default=0.008, help="learnin
 parser.add_argument("--weight-decay", type=float, default=0.28, help="cautious weight decay for the Muon optimizer (for weights)")
 parser.add_argument("--matrix-lr", type=float, default=0.02, help="learning rate for matrix parameters (Muon)")
 parser.add_argument("--scalar-lr", type=float, default=0.5, help="learning rate for scalars (resid_lambdas, x0_lambdas)")
+parser.add_argument("--muon2", action="store_true", help="use Muon^2: Adam-style second-moment preconditioning of the momentum before orthogonalization (https://arxiv.org/abs/2604.09967)")
+parser.add_argument("--muon2-beta2", type=float, default=0.95, help="Muon^2: EMA coefficient of the elementwise gradient second moment (paper does not specify; tune)")
+parser.add_argument("--muon2-eps", type=float, default=1e-8, help="Muon^2: epsilon added to sqrt(second moment)")
 parser.add_argument("--warmup-steps", type=int, default=40, help="number of steps for LR warmup")
 parser.add_argument("--warmdown-ratio", type=float, default=0.65, help="ratio of iterations for LR warmdown")
 parser.add_argument("--final-lr-frac", type=float, default=0.05, help="final LR as fraction of initial LR")
@@ -318,6 +321,20 @@ optimizer = model.setup_optimizer(
 if resuming:
     optimizer.load_state_dict(optimizer_data)
     del optimizer_data
+
+# Muon^2 switch. Set AFTER load_state_dict, since loading restores the saved param-group settings.
+# The extra state (elementwise second moment) is created lazily inside the optimizer on the first step.
+if args.muon2:
+    num_muon2_groups = 0
+    for group in optimizer.param_groups:
+        if group['kind'] == 'muon':
+            group['muon2'] = True
+            group['muon2_beta2'] = args.muon2_beta2
+            group['muon2_eps'] = args.muon2_eps
+            num_muon2_groups += 1
+    print0(f"Muon^2 enabled on {num_muon2_groups} Muon param groups (beta2={args.muon2_beta2}, eps={args.muon2_eps})")
+else:
+    print0("Optimizer: standard nanochat Muon (Muon^2 disabled)")
 
 # -----------------------------------------------------------------------------
 # GradScaler for fp16 training (bf16/fp32 don't need it — bf16 has the same exponent range as fp32)
