@@ -6,15 +6,20 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --mem-per-cpu=20000
 
-# Usage (OPTIMIZER is one of: muon | muon2 | both; default: both):
-#   sbatch smoke_test.sbatch                                   # both variants, one after the other
-#   sbatch --export=ALL,OPTIMIZER=muon  smoke_test.sbatch      # current nanochat optimizer only
-#   sbatch --export=ALL,OPTIMIZER=muon2 smoke_test.sbatch      # current optimizer + Muon^2 only
+# VARIANT selects the MuonEq / Muon^2 combination (all other Muon additions stay on):
+#   eq     MuonEq on,  Muon^2 off   (= standard nanochat)
+#   eq_m2  MuonEq on,  Muon^2 on
+#   m2     MuonEq off, Muon^2 on
+#   base   MuonEq off, Muon^2 off
+#   all    all four, one after the other (default)
+# Usage:
+#   sbatch smoke_test.sbatch                                  # all four variants
+#   sbatch --export=ALL,VARIANT=eq_m2 smoke_test.sbatch       # a single variant
 # Optional overrides (same --export mechanism): NUM_ITERS (default 50), MUON2_BETA2, MUON2_EPS
 
 set -euo pipefail
 
-OPTIMIZER="${OPTIMIZER:-both}"
+VARIANT="${VARIANT:-all}"
 NUM_ITERS="${NUM_ITERS:-50}"
 MUON2_BETA2="${MUON2_BETA2:-0.95}"
 MUON2_EPS="${MUON2_EPS:-1e-8}"
@@ -22,7 +27,7 @@ MUON2_EPS="${MUON2_EPS:-1e-8}"
 REPO_ROOT="${SLURM_SUBMIT_DIR:-$PWD}"
 LOG_DIR="$REPO_ROOT/logs/slurm"
 mkdir -p "$LOG_DIR"
-exec > "$LOG_DIR/${SLURM_JOB_NAME:-job}-${OPTIMIZER}-${SLURM_JOB_ID:-$$}.out" 2>&1
+exec > "$LOG_DIR/${SLURM_JOB_NAME:-job}-${VARIANT}-${SLURM_JOB_ID:-$$}.out" 2>&1
 cd "$REPO_ROOT"
 
 # Use the uv-built venv in the repo (has torch + wandb); conda is only needed to provide the `uv` command itself
@@ -54,19 +59,19 @@ run_variant() {
     python -m scripts.base_train "${COMMON_ARGS[@]}" --model-tag="smoke_${name}" "$@"
 }
 
-case "$OPTIMIZER" in
-    muon)
-        run_variant muon
-        ;;
-    muon2)
-        run_variant muon2 --muon2 --muon2-beta2="$MUON2_BETA2" --muon2-eps="$MUON2_EPS"
-        ;;
-    both)
-        run_variant muon
-        run_variant muon2 --muon2 --muon2-beta2="$MUON2_BETA2" --muon2-eps="$MUON2_EPS"
-        ;;
-    *)
-        echo "Unknown OPTIMIZER='$OPTIMIZER' (expected: muon | muon2 | both)" >&2
-        exit 1
-        ;;
-esac
+M2_ARGS=(--muon2 --muon2-beta2="$MUON2_BETA2" --muon2-eps="$MUON2_EPS")
+run_one() {
+    case "$1" in
+        eq)    run_variant eq    --muoneq ;;
+        eq_m2) run_variant eq_m2 --muoneq "${M2_ARGS[@]}" ;;
+        m2)    run_variant m2    --no-muoneq "${M2_ARGS[@]}" ;;
+        base)  run_variant base  --no-muoneq ;;
+        *) echo "Unknown VARIANT='$1' (expected: eq | eq_m2 | m2 | base | all)" >&2; exit 1 ;;
+    esac
+}
+
+if [[ "$VARIANT" == "all" ]]; then
+    for v in eq eq_m2 m2 base; do run_one "$v"; done
+else
+    run_one "$VARIANT"
+fi

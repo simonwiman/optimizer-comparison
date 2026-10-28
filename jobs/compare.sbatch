@@ -6,9 +6,13 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --mem-per-cpu=20000
 
-# One optimizer variant per job, so the two runs execute in parallel on identical settings:
-#   sbatch --export=ALL,OPTIMIZER=muon  compare.sbatch     # current nanochat optimizer
-#   sbatch --export=ALL,OPTIMIZER=muon2 compare.sbatch     # current optimizer + Muon^2
+# One optimizer variant per job, so the runs execute in parallel on identical settings.
+# VARIANT selects the MuonEq / Muon^2 combination (all other Muon additions stay on):
+#   eq     MuonEq on,  Muon^2 off   (= standard nanochat)
+#   eq_m2  MuonEq on,  Muon^2 on
+#   m2     MuonEq off, Muon^2 on
+#   base   MuonEq off, Muon^2 off
+#   for v in eq eq_m2 m2 base; do sbatch --export=ALL,VARIANT=$v compare.sbatch; done
 #
 # Optional overrides via --export=ALL,KEY=value,...
 #   DEPTH (8)  NUM_ITERS (1500)  TOTAL_BATCH (262144)  EVAL_EVERY (250)
@@ -16,11 +20,11 @@
 #   TAG (suffix for model tag / log, e.g. _lr0.03, for sweeps)
 #
 # Run length is fixed by NUM_ITERS * TOTAL_BATCH tokens (default ~393M tokens), NOT by wall-clock.
-# If the first job's log shows a very different ETA than ~15 min, adjust NUM_ITERS for BOTH variants.
+# If the first job's log shows a very different ETA than ~15 min, adjust NUM_ITERS for ALL variants.
 
 set -euo pipefail
 
-OPTIMIZER="${OPTIMIZER:?set OPTIMIZER=muon or OPTIMIZER=muon2 via --export=ALL,OPTIMIZER=...}"
+VARIANT="${VARIANT:?set VARIANT=eq|eq_m2|m2|base via --export=ALL,VARIANT=...}"
 DEPTH="${DEPTH:-8}"
 NUM_ITERS="${NUM_ITERS:-1500}"
 TOTAL_BATCH="${TOTAL_BATCH:-262144}"
@@ -32,7 +36,7 @@ TAG="${TAG:-}"
 REPO_ROOT="${SLURM_SUBMIT_DIR:-$PWD}"
 LOG_DIR="$REPO_ROOT/logs/slurm"
 mkdir -p "$LOG_DIR"
-exec > "$LOG_DIR/${SLURM_JOB_NAME:-job}-d${DEPTH}-${OPTIMIZER}${TAG}-${SLURM_JOB_ID:-$$}.out" 2>&1
+exec > "$LOG_DIR/${SLURM_JOB_NAME:-job}-d${DEPTH}-${VARIANT}${TAG}-${SLURM_JOB_ID:-$$}.out" 2>&1
 cd "$REPO_ROOT"
 
 source "$REPO_ROOT/.venv/bin/activate"
@@ -44,7 +48,7 @@ export OMP_NUM_THREADS=1
 ARGS=(
     --depth="$DEPTH"
     --run=dummy
-    --model-tag="cmp_d${DEPTH}_${OPTIMIZER}${TAG}"
+    --model-tag="cmp_d${DEPTH}_${VARIANT}${TAG}"
     --num-iterations="$NUM_ITERS"
     --total-batch-size="$TOTAL_BATCH"
     --eval-every="$EVAL_EVERY"
@@ -57,11 +61,14 @@ if [[ -n "${MATRIX_LR:-}" ]]; then
     ARGS+=(--matrix-lr="$MATRIX_LR")
 fi
 
-case "$OPTIMIZER" in
-    muon)  ;;
-    muon2) ARGS+=(--muon2 --muon2-beta2="$MUON2_BETA2" --muon2-eps="$MUON2_EPS") ;;
-    *) echo "Unknown OPTIMIZER='$OPTIMIZER' (expected: muon | muon2)" >&2; exit 1 ;;
+M2_ARGS=(--muon2 --muon2-beta2="$MUON2_BETA2" --muon2-eps="$MUON2_EPS")
+case "$VARIANT" in
+    eq)    ARGS+=(--muoneq) ;;
+    eq_m2) ARGS+=(--muoneq "${M2_ARGS[@]}") ;;
+    m2)    ARGS+=(--no-muoneq "${M2_ARGS[@]}") ;;
+    base)  ARGS+=(--no-muoneq) ;;
+    *) echo "Unknown VARIANT='$VARIANT' (expected: eq | eq_m2 | m2 | base)" >&2; exit 1 ;;
 esac
 
-echo "Variant: $OPTIMIZER | depth=$DEPTH iters=$NUM_ITERS batch=$TOTAL_BATCH"
+echo "Variant: $VARIANT | depth=$DEPTH iters=$NUM_ITERS batch=$TOTAL_BATCH"
 python -m scripts.base_train "${ARGS[@]}"

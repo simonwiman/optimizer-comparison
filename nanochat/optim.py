@@ -128,9 +128,10 @@ def muon_step_fused(
     precond_v: Tensor | None = None,        # (12, 768, 3072) fp32 - Muon^2 elementwise second moment (None = plain Muon)
     precond_beta2_t: Tensor | None = None,  # () - 0-D CPU tensor, Muon^2 second-moment EMA coefficient
     precond_eps_t: Tensor | None = None,    # () - 0-D CPU tensor, Muon^2 epsilon
+    muoneq: bool = True,                    # static - apply MuonEq row equilibration before orthogonalization
 ) -> None:
     """
-    Fused Muon step: momentum -> [muon2 precondition] -> polar_express -> variance_reduction -> cautious_update
+    Fused Muon step: momentum -> [muon2 precondition] -> [muoneq] -> polar_express -> variance_reduction -> cautious_update
     All in one compiled graph to eliminate Python overhead between ops.
     Some of the constants are 0-D CPU tensors to avoid recompilation when values change.
     """
@@ -153,10 +154,11 @@ def muon_step_fused(
     # Cast to bf16 for speed when available; skip cast otherwise (fp16 is unstable here due to limited exponent range)
     X = g.bfloat16() if COMPUTE_DTYPE == torch.bfloat16 else g
 
-    # MuonEq row equilibration: rescale each row to the mean row norm so the spectrum entering orthogonalization is better conditioned
-    target = X.float().norm(dim=(-2, -1), keepdim=True) / (X.size(-2) ** 0.5)
-    row_norm = X.float().norm(dim=-1, keepdim=True).clamp_min(1e-6)
-    X = X * (target / row_norm).to(X.dtype)
+    # MuonEq row equilibration (toggle via `muoneq`): rescale each row to the mean row norm so the spectrum entering orthogonalization is better conditioned
+    if muoneq:
+        target = X.float().norm(dim=(-2, -1), keepdim=True) / (X.size(-2) ** 0.5)
+        row_norm = X.float().norm(dim=-1, keepdim=True).clamp_min(1e-6)
+        X = X * (target / row_norm).to(X.dtype)
 
     # Polar Express orthogonalization: replace each update with the nearest orthogonal matrix
     X = X / (X.norm(dim=(-2, -1), keepdim=True) * 1.01 + 1e-6)
@@ -275,6 +277,7 @@ class MuonAdamW(torch.optim.Optimizer):
             - For AdamW groups: 'lr', 'betas', 'eps', 'weight_decay'
             - For Muon groups: 'lr', 'momentum', 'ns_steps', 'beta2', 'weight_decay'
               Optional (Muon^2): 'muon2' (bool, default False), 'muon2_beta2' (default 0.95), 'muon2_eps' (default 1e-8)
+              Optional (MuonEq): 'muoneq' (bool, default True = standard nanochat behavior)
     """
     def __init__(self, param_groups: list[dict]):
         super().__init__(param_groups, defaults={})
@@ -403,6 +406,7 @@ class MuonAdamW(torch.optim.Optimizer):
             state["second_momentum_buffer"] = torch.zeros(state_shape, dtype=dtype, device=device)
         red_dim = -1 if shape[-2] >= shape[-1] else -2
         use_muon2 = group.get("muon2", False)
+        use_muoneq = group.get("muoneq", True)
         if use_muon2 and "precond_second_moment" not in state:
             # Full-size elementwise second moment, fp32, sharded by chunk like momentum_buffer
             state["precond_second_moment"] = torch.zeros(chunk_size, *shape, dtype=torch.float32, device=device)
@@ -431,6 +435,7 @@ class MuonAdamW(torch.optim.Optimizer):
                 state["momentum_buffer"][:num_owned], state["second_momentum_buffer"][:num_owned],
                 self._muon_momentum_t, self._muon_lr_t, self._muon_wd_t, self._muon_beta2_t,
                 group["ns_steps"], red_dim,
+                muoneq=use_muoneq,
                 **muon2_kwargs,
             )
 
