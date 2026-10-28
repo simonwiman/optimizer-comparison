@@ -79,6 +79,7 @@ parser.add_argument("--core-metric-every", type=int, default=2000, help="evaluat
 parser.add_argument("--core-metric-max-per-task", type=int, default=500, help="examples per task for CORE metric")
 parser.add_argument("--sample-every", type=int, default=2000, help="sample from model every N steps (-1 = disable)")
 parser.add_argument("--save-every", type=int, default=-1, help="save checkpoints every N steps (-1 = only at end)")
+parser.add_argument("--stop-after-steps", type=int, default=-1, help="exit early after this many steps WITHOUT changing the planned num_iterations/batch size/LR schedule; no final eval/checkpoint. For timing runs (-1 = disable)")
 # Output
 parser.add_argument("--model-tag", type=str, default=None, help="override model tag for checkpoint directory name")
 args = parser.parse_args()
@@ -438,11 +439,14 @@ while True:
     # once in a while: evaluate the val bpb (all ranks participate)
     if args.eval_every > 0 and (last_step or step % args.eval_every == 0):
         model.eval()
+        synchronize()
+        t_eval = time.time()
         val_loader = build_val_loader()
         eval_steps = args.eval_tokens // (args.device_batch_size * args.max_seq_len * ddp_world_size)
         with disable_fp8(model):
             val_bpb = evaluate_bpb(model, val_loader, eval_steps, token_bytes)
-        print0(f"Step {step:05d} | Validation bpb: {val_bpb:.6f}")
+        synchronize()
+        print0(f"Step {step:05d} | Validation bpb: {val_bpb:.6f} | eval time: {time.time() - t_eval:.1f}s")
         if val_bpb < min_val_bpb:
             min_val_bpb = val_bpb
         wandb_run.log({
@@ -459,9 +463,12 @@ while True:
     results = {}
     if args.core_metric_every > 0 and (last_step or (step > 0 and step % args.core_metric_every == 0)):
         model.eval()
+        synchronize()
+        t_core = time.time()
         with disable_fp8(orig_model):
             results = evaluate_core(orig_model, tokenizer, device, max_per_task=args.core_metric_max_per_task)
-        print0(f"Step {step:05d} | CORE metric: {results['core_metric']:.4f}")
+        synchronize()
+        print0(f"Step {step:05d} | CORE metric: {results['core_metric']:.4f} | eval time: {time.time() - t_core:.1f}s")
         wandb_run.log({
             "step": step,
             "total_training_flops": flops_so_far,
@@ -518,6 +525,9 @@ while True:
 
     # termination conditions (TODO: possibly also add loss explosions etc.)
     if last_step:
+        break
+    if args.stop_after_steps > 0 and step >= args.stop_after_steps:
+        print0(f"Stopping early after {step} steps (--stop-after-steps); planned num_iterations was {num_iterations:,}")
         break
 
     # -------------------------------------------------------------------------
