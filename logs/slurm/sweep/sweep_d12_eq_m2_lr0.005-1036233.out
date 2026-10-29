@@ -1,0 +1,4 @@
+[sweep_d12_eq_m2_lr0.005] host=xgpi13 gpu=NVIDIA H100 NVL
+[sweep_d12_eq_m2_lr0.005] python -m scripts.base_train --depth=12 --run=dummy --model-tag=sweep_d12_eq_m2_lr0.005 --matrix-lr=0.005 --device-batch-size=32 --sample-every=-1 --muoneq --muon2 --muon2-beta2=0.95 --muon2-eps=1e-8
+2026-10-29 16:06:42,784 - nanochat.common - [32m[1mINFO[0m - Distributed world size: 1
+W1029 16:06:49.626000 749476 .venv/lib/python3.10/site-packages/torch/_inductor/utils.py:1613] [0/0] Not enough SMs to use max_autotune_gemm mode
