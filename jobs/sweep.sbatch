@@ -36,7 +36,10 @@ MUON2_EPS="${MUON2_EPS:-1e-8}"
 
 TAG="sweep_d${DEPTH}_${VARIANT}_lr${MATRIX_LR}"
 
-REPO_ROOT="${SLURM_SUBMIT_DIR:-$PWD}"
+# Repo root = git toplevel of the submit dir (so the scripts can live in e.g. jobs/).
+# Override with --export=ALL,REPO_ROOT=/path/to/repo if the checkout isn't a git repo.
+SUBMIT_DIR="${SLURM_SUBMIT_DIR:-$PWD}"
+REPO_ROOT="${REPO_ROOT:-$(git -C "$SUBMIT_DIR" rev-parse --show-toplevel 2>/dev/null || echo "$SUBMIT_DIR")}"
 LOG_DIR="$REPO_ROOT/logs/slurm/sweep"
 DONE_DIR="$REPO_ROOT/logs/sweep"
 mkdir -p "$LOG_DIR" "$DONE_DIR"
