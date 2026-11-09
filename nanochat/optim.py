@@ -81,14 +81,14 @@ Polar Express Sign Method for orthogonalization.
 https://arxiv.org/pdf/2505.16932
 by Noah Amsel, David Persson, Christopher Musco, Robert M. Gower.
 
-NorMuon variance reduction: per-neuron/column adaptive learning rate that normalizes
-update scales after orthogonalization (Muon's output has non-uniform scales across neurons).
-https://arxiv.org/pdf/2510.05491
+NorMuon variance reduction (toggle: group["normuon"], default True): per-neuron/column adaptive learning
+rate that normalizes update scales after orthogonalization (Muon's output has non-uniform scales across
+neurons). https://arxiv.org/pdf/2510.05491 When disabled, the second-moment buffer is not allocated or updated.
 
-Two more (very) slight and optional improvements:
+Optional improvements (each can be toggled per param group, see --muoneq / --muonplus / --normuon in scripts/base_train.py):
 1) MuonEq row equilibration: rescale each row to the mean row norm so the spectrum
 entering orthogonalization is better conditioned (https://arxiv.org/abs/2603.28254)
-2) Muon+ renormalization: snap the Frobenius norm to sqrt(min(m, n)), the norm of an exactly
+2) Muon+ renormalization (toggle: group["muonplus"], default True): snap the Frobenius norm to sqrt(min(m, n)), the norm of an exactly
 semi-orthogonal matrix, correcting for under-convergence of the polar iteration (https://arxiv.org/abs/2602.21545)
 
 Optional Muon^2 (https://arxiv.org/abs/2604.09967): Adam-style second-moment preconditioning of the
@@ -118,7 +118,7 @@ def muon_step_fused(
     stacked_grads: Tensor,          # (12, 768, 3072) - stacked gradients
     stacked_params: Tensor,         # (12, 768, 3072) - stacked parameters
     momentum_buffer: Tensor,        # (12, 768, 3072) - first moment buffer
-    second_momentum_buffer: Tensor, # (12, 768, 1) or (12, 1, 3072) - factored second moment
+    second_momentum_buffer: Tensor | None, # (12, 768, 1) or (12, 1, 3072) - factored second moment (None if normuon=False)
     momentum_t: Tensor,             # () - 0-D CPU tensor, momentum coefficient
     lr_t: Tensor,                   # () - 0-D CPU tensor, learning rate
     wd_t: Tensor,                   # () - 0-D CPU tensor, weight decay
@@ -129,9 +129,11 @@ def muon_step_fused(
     precond_beta2_t: Tensor | None = None,  # () - 0-D CPU tensor, Muon^2 second-moment EMA coefficient
     precond_eps_t: Tensor | None = None,    # () - 0-D CPU tensor, Muon^2 epsilon
     muoneq: bool = True,                    # static - apply MuonEq row equilibration before orthogonalization
+    muonplus: bool = True,                  # static - apply Muon+ Frobenius renormalization after orthogonalization
+    normuon: bool = True,                   # static - apply NorMuon variance reduction after orthogonalization
 ) -> None:
     """
-    Fused Muon step: momentum -> [muon2 precondition] -> [muoneq] -> polar_express -> variance_reduction -> cautious_update
+    Fused Muon step: momentum -> [muon2 precondition] -> [muoneq] -> polar_express -> [muon+ renorm] -> [normuon variance_reduction] -> cautious_update
     All in one compiled graph to eliminate Python overhead between ops.
     Some of the constants are 0-D CPU tensors to avoid recompilation when values change.
     """
@@ -175,23 +177,25 @@ def muon_step_fused(
     # Cast back to the param dtype (MPS errors on the mixed-dtype ops below when X is bf16)
     g = X.to(stacked_params.dtype)
 
-    # Muon+ renormalization: snap Frobenius norm to sqrt(min(m, n))
-    target_norm = min(g.size(-2), g.size(-1)) ** 0.5
-    current_norm = g.float().norm(dim=(-2, -1), keepdim=True).clamp_min(1e-6)
-    g = g * (target_norm / current_norm).to(g.dtype)
+    # Muon+ renormalization (toggle via `muonplus`): snap Frobenius norm to sqrt(min(m, n))
+    if muonplus:
+        target_norm = min(g.size(-2), g.size(-1)) ** 0.5
+        current_norm = g.float().norm(dim=(-2, -1), keepdim=True).clamp_min(1e-6)
+        g = g * (target_norm / current_norm).to(g.dtype)
 
-    # Variance reduction
-    beta2 = beta2_t.to(g.dtype)
-    v_mean = g.float().square().mean(dim=red_dim, keepdim=True)
-    red_dim_size = g.size(red_dim)
-    v_norm_sq = v_mean.sum(dim=(-2, -1), keepdim=True) * red_dim_size
-    v_norm = v_norm_sq.sqrt()
-    second_momentum_buffer.lerp_(v_mean.to(dtype=second_momentum_buffer.dtype), 1 - beta2)
-    step_size = second_momentum_buffer.clamp_min(1e-10).rsqrt()
-    scaled_sq_sum = (v_mean * red_dim_size) * step_size.float().square()
-    v_norm_new = scaled_sq_sum.sum(dim=(-2, -1), keepdim=True).sqrt()
-    final_scale = step_size * (v_norm / v_norm_new.clamp_min(1e-10))
-    g = g * final_scale.to(g.dtype)
+    # NorMuon variance reduction (toggle via `normuon`)
+    if normuon:
+        beta2 = beta2_t.to(g.dtype)
+        v_mean = g.float().square().mean(dim=red_dim, keepdim=True)
+        red_dim_size = g.size(red_dim)
+        v_norm_sq = v_mean.sum(dim=(-2, -1), keepdim=True) * red_dim_size
+        v_norm = v_norm_sq.sqrt()
+        second_momentum_buffer.lerp_(v_mean.to(dtype=second_momentum_buffer.dtype), 1 - beta2)
+        step_size = second_momentum_buffer.clamp_min(1e-10).rsqrt()
+        scaled_sq_sum = (v_mean * red_dim_size) * step_size.float().square()
+        v_norm_new = scaled_sq_sum.sum(dim=(-2, -1), keepdim=True).sqrt()
+        final_scale = step_size * (v_norm / v_norm_new.clamp_min(1e-10))
+        g = g * final_scale.to(g.dtype)
 
     # Cautious weight decay + parameter update
     lr = lr_t.to(g.dtype)
@@ -278,6 +282,9 @@ class MuonAdamW(torch.optim.Optimizer):
             - For Muon groups: 'lr', 'momentum', 'ns_steps', 'beta2', 'weight_decay'
               Optional (Muon^2): 'muon2' (bool, default False), 'muon2_beta2' (default 0.95), 'muon2_eps' (default 1e-8)
               Optional (MuonEq): 'muoneq' (bool, default True = standard nanochat behavior)
+              Optional (Muon+): 'muonplus' (bool, default True) - Frobenius renormalization after orthogonalization
+              Optional (NorMuon): 'normuon' (bool, default True) - variance reduction after orthogonalization;
+                  when False, 'second_momentum_buffer' is not allocated and 'beta2' is unused
     """
     def __init__(self, param_groups: list[dict]):
         super().__init__(param_groups, defaults={})
@@ -401,7 +408,9 @@ class MuonAdamW(torch.optim.Optimizer):
         state = self.state[p]
         if "momentum_buffer" not in state:
             state["momentum_buffer"] = torch.zeros(chunk_size, *shape, dtype=dtype, device=device)
-        if "second_momentum_buffer" not in state:
+        use_normuon = group.get("normuon", True)
+        use_muonplus = group.get("muonplus", True)
+        if use_normuon and "second_momentum_buffer" not in state:
             state_shape = (chunk_size, shape[-2], 1) if shape[-2] >= shape[-1] else (chunk_size, 1, shape[-1])
             state["second_momentum_buffer"] = torch.zeros(state_shape, dtype=dtype, device=device)
         red_dim = -1 if shape[-2] >= shape[-1] else -2
@@ -432,10 +441,13 @@ class MuonAdamW(torch.optim.Optimizer):
                 )
             muon_step_fused(
                 grad_chunk[:num_owned], stacked_owned,
-                state["momentum_buffer"][:num_owned], state["second_momentum_buffer"][:num_owned],
+                state["momentum_buffer"][:num_owned],
+                state["second_momentum_buffer"][:num_owned] if use_normuon else None,
                 self._muon_momentum_t, self._muon_lr_t, self._muon_wd_t, self._muon_beta2_t,
                 group["ns_steps"], red_dim,
                 muoneq=use_muoneq,
+                muonplus=use_muonplus,
+                normuon=use_normuon,
                 **muon2_kwargs,
             )
 

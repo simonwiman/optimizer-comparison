@@ -65,6 +65,8 @@ parser.add_argument("--weight-decay", type=float, default=0.28, help="cautious w
 parser.add_argument("--matrix-lr", type=float, default=0.02, help="learning rate for matrix parameters (Muon)")
 parser.add_argument("--scalar-lr", type=float, default=0.5, help="learning rate for scalars (resid_lambdas, x0_lambdas)")
 parser.add_argument("--muoneq", action=argparse.BooleanOptionalAction, default=True, help="MuonEq row equilibration before orthogonalization (on by default = standard nanochat; --no-muoneq disables it)")
+parser.add_argument("--muonplus", action=argparse.BooleanOptionalAction, default=True, help="Muon+ Frobenius renormalization after orthogonalization (on by default; --no-muonplus disables it)")
+parser.add_argument("--normuon", action=argparse.BooleanOptionalAction, default=True, help="NorMuon variance reduction after orthogonalization (on by default; --no-normuon disables it)")
 parser.add_argument("--muon2", action="store_true", help="use Muon^2: Adam-style second-moment preconditioning of the momentum before orthogonalization (https://arxiv.org/abs/2604.09967)")
 parser.add_argument("--muon2-beta2", type=float, default=0.95, help="Muon^2: EMA coefficient of the elementwise gradient second moment (paper does not specify; tune)")
 parser.add_argument("--muon2-eps", type=float, default=1e-8, help="Muon^2: epsilon added to sqrt(second moment)")
@@ -324,18 +326,20 @@ if resuming:
     optimizer.load_state_dict(optimizer_data)
     del optimizer_data
 
-# Optimizer variant switches (MuonEq x Muon^2). Set AFTER load_state_dict, since loading restores the saved param-group settings.
+# Optimizer variant switches (MuonEq x Muon+ x NorMuon x Muon^2). Set AFTER load_state_dict, since loading restores the saved param-group settings.
 # Muon^2's extra state (elementwise second moment) is created lazily inside the optimizer on the first step.
-# The other Muon additions (Polar Express, Muon+ renormalization, NorMuon variance reduction, cautious WD) are always on.
+# NorMuon's second-moment buffer is only allocated when --normuon is on. Polar Express and cautious WD are always on.
 num_muon_groups = 0
 for group in optimizer.param_groups:
     if group['kind'] == 'muon':
         group['muoneq'] = args.muoneq
+        group['muonplus'] = args.muonplus
+        group['normuon'] = args.normuon
         group['muon2'] = args.muon2
         group['muon2_beta2'] = args.muon2_beta2
         group['muon2_eps'] = args.muon2_eps
         num_muon_groups += 1
-print0(f"Optimizer variant: MuonEq={'ON' if args.muoneq else 'OFF'}, Muon^2={'ON' if args.muon2 else 'OFF'} "
+print0(f"Optimizer variant: MuonEq={'ON' if args.muoneq else 'OFF'}, Muon+={'ON' if args.muonplus else 'OFF'}, NorMuon={'ON' if args.normuon else 'OFF'}, Muon^2={'ON' if args.muon2 else 'OFF'} "
        f"on {num_muon_groups} Muon param groups" + (f" (muon2 beta2={args.muon2_beta2}, eps={args.muon2_eps})" if args.muon2 else ""))
 
 # -----------------------------------------------------------------------------
