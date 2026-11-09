@@ -1,6 +1,6 @@
 #!/bin/bash
 # Submit the sweep: 2 depths x 3 matrix LRs x 4 variants = 24 independent jobs.
-# Muon+ and NorMuon are OFF in every job (set in sweep.sbatch); the variants differ only in
+# Muon+ and NorMuon are OFF in every job (set in sweep_reduced_variants.sbatch); the variants differ only in
 # MuonEq / Muon^2:
 #   base   : no MuonEq, no Muon^2
 #   eq     : MuonEq
@@ -11,7 +11,7 @@
 #   DRY_RUN=1 ./launch_sweep.sh       # print the sbatch commands only
 #   DEPTHS="8" ./launch_sweep.sh      # subset (also: LRS="0.02 0.04", VARIANTS="eq base")
 #
-# Finished runs are skipped by sweep.sbatch, so re-running after a failure only redoes
+# Finished runs are skipped by sweep_reduced_variants.sbatch, so re-running after a failure only redoes
 # the missing ones (completed jobs exit immediately).
 #
 # Time limits and GPU types are carried over from the previous sweep (d8 / d12 are the
@@ -46,7 +46,7 @@ for depth in $DEPTHS; do
                 --time="${TIME_LIMIT[$depth]}"
                 --gpus="${GPU[$depth]}"
                 --export="ALL,VARIANT=$v,DEPTH=$depth,MATRIX_LR=$lr,DEV_BS=${DEVBS[$depth]}"
-                sweep.sbatch)
+                sweep_reduced_variants.sbatch)
             if [[ -n "${DRY_RUN:-}" ]]; then
                 echo "${cmd[*]}"
             else
