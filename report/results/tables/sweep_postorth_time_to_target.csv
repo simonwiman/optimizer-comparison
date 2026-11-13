@@ -1,0 +1,25 @@
+depth,metric,target,target_set_by,reference,variant,lr,final,steps_to_target,tokens_M,minutes_to_target,speedup_steps_pct,speedup_time_pct,config
+8,val bpb,0.9472,m2,base,eq,0.02,0.9444,1861.0,488.0,16.23,-0.6,-7.9,post-orthogonalization steps ON: Muon+ renorm + NorMuon variance reduction
+8,val bpb,0.9472,m2,base,eq_m2,0.02,0.9461,1896.0,497.0,15.33,-2.4,-2.5,post-orthogonalization steps ON: Muon+ renorm + NorMuon variance reduction
+8,val bpb,0.9472,m2,base,m2,0.02,0.9472,1920.0,503.3,10.52,-3.6,42.1,post-orthogonalization steps ON: Muon+ renorm + NorMuon variance reduction
+8,val bpb,0.9472,m2,base,base,0.02,0.9439,1850.0,485.1,14.94,0.0,0.0,post-orthogonalization steps ON: Muon+ renorm + NorMuon variance reduction
+8,train loss (EMA),3.1187,m2,base,eq,0.02,3.1092,1694.0,444.0,14.75,-0.0,-7.3,post-orthogonalization steps ON: Muon+ renorm + NorMuon variance reduction
+8,train loss (EMA),3.1187,m2,base,eq_m2,0.02,3.1149,1694.0,444.0,13.69,-0.0,-0.1,post-orthogonalization steps ON: Muon+ renorm + NorMuon variance reduction
+8,train loss (EMA),3.1187,m2,base,m2,0.02,3.1187,1694.0,444.1,9.23,-0.0,48.2,post-orthogonalization steps ON: Muon+ renorm + NorMuon variance reduction
+8,train loss (EMA),3.1187,m2,base,base,0.02,3.1065,1693.0,443.9,13.67,0.0,0.0,post-orthogonalization steps ON: Muon+ renorm + NorMuon variance reduction
+12,val bpb,0.8484,base,base,eq,0.02,0.8471,2478.0,1299.2,87.85,1.7,-7.0,post-orthogonalization steps ON: Muon+ renorm + NorMuon variance reduction
+12,val bpb,0.8484,base,base,eq_m2,0.02,0.8481,2507.0,1314.3,94.23,0.5,-13.3,post-orthogonalization steps ON: Muon+ renorm + NorMuon variance reduction
+12,val bpb,0.8484,base,base,m2,0.02,0.8478,2495.0,1308.1,93.99,1.0,-13.0,post-orthogonalization steps ON: Muon+ renorm + NorMuon variance reduction
+12,val bpb,0.8484,base,base,base,0.02,0.8484,2520.0,1321.2,81.73,0.0,0.0,post-orthogonalization steps ON: Muon+ renorm + NorMuon variance reduction
+12,train loss (EMA),2.8131,base,base,eq,0.02,2.809,2197.0,1152.1,76.72,0.0,-6.7,post-orthogonalization steps ON: Muon+ renorm + NorMuon variance reduction
+12,train loss (EMA),2.8131,base,base,eq_m2,0.02,2.8116,2198.0,1152.2,83.79,0.0,-14.6,post-orthogonalization steps ON: Muon+ renorm + NorMuon variance reduction
+12,train loss (EMA),2.8131,base,base,m2,0.02,2.8114,2198.0,1152.1,82.45,0.0,-13.2,post-orthogonalization steps ON: Muon+ renorm + NorMuon variance reduction
+12,train loss (EMA),2.8131,base,base,base,0.02,2.8131,2198.0,1152.3,71.59,0.0,0.0,post-orthogonalization steps ON: Muon+ renorm + NorMuon variance reduction
+16,val bpb,0.7839,eq_m2,base,eq,0.02,0.7826,5275.0,2765.8,216.49,0.2,7.6,post-orthogonalization steps ON: Muon+ renorm + NorMuon variance reduction
+16,val bpb,0.7839,eq_m2,base,eq_m2,0.02,0.7839,5376.0,2818.6,226.18,-1.7,3.0,post-orthogonalization steps ON: Muon+ renorm + NorMuon variance reduction
+16,val bpb,0.7839,eq_m2,base,m2,0.02,0.7835,5341.0,2800.4,224.32,-1.1,3.9,post-orthogonalization steps ON: Muon+ renorm + NorMuon variance reduction
+16,val bpb,0.7839,eq_m2,base,base,0.02,0.7828,5284.0,2770.5,233.0,0.0,0.0,post-orthogonalization steps ON: Muon+ renorm + NorMuon variance reduction
+16,train loss (EMA),2.5688,eq_m2,base,eq,0.02,2.5654,4680.0,2453.9,191.86,-0.0,7.6,post-orthogonalization steps ON: Muon+ renorm + NorMuon variance reduction
+16,train loss (EMA),2.5688,eq_m2,base,eq_m2,0.02,2.5688,4681.0,2454.0,196.96,-0.0,4.8,post-orthogonalization steps ON: Muon+ renorm + NorMuon variance reduction
+16,train loss (EMA),2.5688,eq_m2,base,m2,0.02,2.5683,4681.0,2454.1,196.5,-0.0,5.0,post-orthogonalization steps ON: Muon+ renorm + NorMuon variance reduction
+16,train loss (EMA),2.5688,eq_m2,base,base,0.02,2.5653,4680.0,2453.8,206.38,0.0,0.0,post-orthogonalization steps ON: Muon+ renorm + NorMuon variance reduction

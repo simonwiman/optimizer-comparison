@@ -1,0 +1,17 @@
+depth,metric,target,target_set_by,reference,variant,lr,final,steps_to_target,tokens_M,minutes_to_target,speedup_steps_pct,speedup_time_pct
+8,val bpb,0.9466,base,base,eq,0.02,0.9425,1836.0,481.4,13.83,4.6,36.2
+8,val bpb,0.9466,base,base,eq_m2,0.02,0.9451,1889.0,495.1,16.08,1.7,17.1
+8,val bpb,0.9466,base,base,m2,0.02,0.9453,1893.0,496.2,14.21,1.4,32.6
+8,val bpb,0.9466,base,base,base,0.02,0.9466,1920.0,503.3,18.84,0.0,0.0
+8,train loss (EMA),3.1159,base,base,eq,0.02,3.1035,1693.0,443.9,12.74,0.0,30.4
+8,train loss (EMA),3.1159,base,base,eq_m2,0.02,3.1115,1694.0,444.0,14.42,0.0,15.3
+8,train loss (EMA),3.1159,base,base,m2,0.02,3.1124,1694.0,444.0,12.71,0.0,30.8
+8,train loss (EMA),3.1159,base,base,base,0.02,3.1159,1694.0,444.1,16.62,0.0,0.0
+12,val bpb,0.8534,base,base,eq,0.02,0.8472,2353.0,1233.6,83.81,7.1,18.8
+12,val bpb,0.8534,base,base,eq_m2,0.02,0.8498,2421.0,1269.1,115.3,4.1,-13.7
+12,val bpb,0.8534,base,base,m2,0.02,0.8484,2384.0,1250.1,97.36,5.7,2.2
+12,val bpb,0.8534,base,base,base,0.04,0.8534,2520.0,1321.2,99.54,0.0,0.0
+12,train loss (EMA),2.8302,base,base,eq,0.02,2.8079,2036.0,1067.5,72.52,8.4,20.0
+12,train loss (EMA),2.8302,base,base,eq_m2,0.02,2.8179,2152.0,1128.0,102.63,2.6,-15.2
+12,train loss (EMA),2.8302,base,base,m2,0.02,2.8129,2037.0,1067.7,82.86,8.4,5.0
+12,train loss (EMA),2.8302,base,base,base,0.04,2.8302,2207.0,1157.1,87.02,0.0,0.0
