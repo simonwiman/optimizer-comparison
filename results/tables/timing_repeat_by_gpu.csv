@@ -1,0 +1,3 @@
+config,gpu_id,hosts,reps,n_runs,total_time_min,median_ms,mean_ms,slow_steps
+d8_eq_poon_lr0.025,GPU-59259b36-7656-eb68-ce01-50f68e3c1105,xgpi11,"1, 4, 6, 8",4,16.2,500.215,509.122,0.25
+d8_eq_poon_lr0.025,GPU-b6bee175-3edc-f36c-1435-01a71f06ab6b,xgpi11,"2, 3, 5, 7",4,14.7,452.512,461.96,0.0

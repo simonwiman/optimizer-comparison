@@ -1,0 +1,2 @@
+config,host,gpu_name,n_runs,total_time_min,median_ms,slow_steps
+d8_eq_poon_lr0.025,xgpi11,NVIDIA H100 NVL,8,15.45,476.364,0.125

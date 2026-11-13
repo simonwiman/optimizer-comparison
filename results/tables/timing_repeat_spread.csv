@@ -1,0 +1,6 @@
+config,metric,n_runs,mean,std,min,max,range_pct,cv_pct
+d8_eq_poon_lr0.025,total_time_min,8,15.45,0.8965,14.34,16.47,14.85,5.8
+d8_eq_poon_lr0.025,median_ms,8,476.3638,30.4192,451.47,514.17,13.89,6.39
+d8_eq_poon_lr0.025,mean_ms,8,485.5412,28.2062,450.56,517.59,14.88,5.81
+d8_eq_poon_lr0.025,tok_per_s_median,8,552238.625,34187.989,510100.0,580660.0,13.83,6.19
+d8_eq_poon_lr0.025,final_val_bpb,8,0.9432,0.0001,0.943,0.9432,0.02,0.01
